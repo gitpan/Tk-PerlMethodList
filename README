@@ -1,0 +1,38 @@
+Tk-PerlMethodList version 0.01
+==========================
+
+Tk::PerlMethodList is a Tk::Toplevel-derived widget.
+
+The window contains entry fields for a classname and a regex. A list below displays the subroutine-names in the package(s) of the given classname and its parent classes. The list will contain the sub-names present in the the symbol-table. It will therefore display imported subs as well. For the same reason it will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
+
+If the file containing a subroutine definition can be found in %INC, the sourcecode will be displayed by clicking on the subs list-entry.
+
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+Class::ISA
+File::Slurp
+Tk
+Tk::LabEntry
+Tk::Text
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2006 by Christoph Lamprecht
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.8.7 or,
+at your option, any later version of Perl 5 you may have available.
+
+
