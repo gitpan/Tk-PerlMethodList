@@ -1,7 +1,7 @@
 #! /usr/bin/perl
 
 package Tk::PerlMethodList;
-our $VERSION = 0.02;
+our $VERSION = 0.03;
 
 use warnings;
 use strict;
@@ -114,7 +114,9 @@ sub Populate{
     my $btn   = $frame -> Button (-text   => 'get methods',
                                   -command=> sub{$self->show_methods}
                               )->pack;
-    my $text  = $self -> Scrolled('ROText')->pack;
+    my $text  = $self -> Scrolled('ROText')->pack(-fill   => 'both',
+						  -expand => 1
+						  );
     my $font  = $self -> fontCreate(-family => 'Courier',
                                     -size   => 10,
                                 );
@@ -301,7 +303,9 @@ sub _code_view_init_top{
     my $c_v = $self->Toplevel();
     my $frame = $c_v->Frame()->pack;
     my $text     = $c_v->Scrolled('ROText',
-                                  -bg=>'white')->pack;
+                                  -bg=>'white')->pack(-fill   => 'both',
+						      -expand => 1,
+						  );
     my $entry = $frame ->LabEntry(-label       => 'Filter',
                                   -labelPack   =>[-side=>'left'],
                                   -textvariable=>\($self->{c_v_entry_filter}||=''),
