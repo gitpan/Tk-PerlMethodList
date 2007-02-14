@@ -2,3 +2,7 @@ Revision history for Perl extension Tk::PerlMethodList.
 
 0.01  Tue May  2 18:14:35 2006
 	- original version;
+
+0.02  Set font in method list and code window to 'Courier' -reported by
+      Slaven Rezic.
+      Added bindings 'Control +' and 'Control -' to change fontsize.

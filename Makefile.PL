@@ -4,7 +4,7 @@ use ExtUtils::MakeMaker;
 # the contents of the Makefile that is written.
 WriteMakefile(
     NAME              => 'Tk::PerlMethodList',
-    VERSION_FROM      => 'lib/Tk/PerlMethodList.pm', # finds $VERSION
+    VERSION_FROM      => 'lib/Tk/PerlMethodList.pm',
     PREREQ_PM         => {Tk          =>'8.4',
 			  Tk::LabEntry=>'4.006',
 			  Class::ISA  =>'0.33',
