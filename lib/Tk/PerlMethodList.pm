@@ -1,16 +1,17 @@
 #! /usr/bin/perl
 
 package Tk::PerlMethodList;
-our $VERSION = 0.03;
+our $VERSION = 0.04;
 
 use warnings;
 use strict;
 use Class::ISA;
 #use Data::Dumper;
-use File::Slurp;
+use File::Slurp qw /read_file/;
 require Tk;
 require Tk::LabEntry;
 require Tk::ROText;
+use Devel::Peek qw(CvGV);
 our @ISA    = ('Tk::Toplevel');
 
 =head1 NAME
@@ -26,9 +27,10 @@ my $instance = $main_window->PerlMethodList();
 
 =head1 DESCRIPTION
 
-The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. The list will contain the sub-names present in the the symbol-table. It will therefore display imported subs as well. For the same reason it will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
+The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. The list will contain the sub-names present in the the symbol-table. It will therefore display imported subs as well. For the same reason it will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. In case of imported subs, the last field of the row contains the aliased sub as reported by DevelPeek::CvGV. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
 
-If the file containing a subroutine definition can be found in %INC, the sourcecode will be displayed by clicking on the subs list-entry.
+If the file containing a subroutine definition can be found in %INC, a green mark will be displayed at the beginning of the line. The sourcecode will be displayed by clicking on the subs list-entry.
+
 
 Method list and source window have Control-plus and Control-minus bindings to change fontsize.
 
@@ -97,30 +99,61 @@ unless (caller()) {
 sub Populate{
     my ($self,@args) = @_;
     $self->SUPER::Populate(@args);
-    my $frame    = $self -> Frame()->pack();
+    my $frame    = $self -> Frame()->pack(-fill => 'x',
+                                          -padx => 20,
+                                          -pady => 4,
+                                      );
+    my $fr_left  = $frame-> Frame()->pack(-side => 'left',
+                                          -fill => 'y');
+    my $fr_right = $frame-> Frame(-relief      => 'sunken',
+                                  -borderwidth => 2,
+                              )->pack(-side => 'left',
+                                      -padx => 10);
 
+    my $fr_overr = $fr_left->Frame()->pack(-anchor => 'nw',
+                                           -pady   => 1
+                                       );
+    my $fr_source= $fr_left->Frame()->pack(-anchor => 'nw',
+                                           -pady   => 1,
+                                       );
+    $fr_overr->Label(-width => 1,
+                     -bg    => 'orange')->pack(-side => 'left');
+    $fr_overr->Label(-text  => 'overridden if called as a method',
+                 )->pack(-side => 'left');
+    $fr_source->Label(-width => 1,
+                      -bg    => 'green')->pack(-side => 'left');
+    $fr_source->Label(-text  => 'sourcecode can be displayed',
+                 )->pack(-side => 'left');
     my @btn_data = (['Classname',\$self->{classname}],
                     ['Filter'   ,\($self->{filter}||='')]);
 
     @$self{qw/entry_cl entry_f/}= 
-        map {$frame -> LabEntry(-label       =>$_->[0],
-                                -textvariable=>$_->[1],
-                                -labelPack   =>[-side=>'left'],
-                                -bg          =>'white'
-                            )->pack(-anchor=>'e');
+        map {my $e = $fr_right -> LabEntry(-label       => $_->[0],
+					   -textvariable=> $_->[1],
+					   -labelPack   => [-side=>'left'],
+				       )->pack(-anchor => 'e');
+	     $e->Subwidget('entry')->configure(-background => 'white');
+	     $e;
          } @btn_data;
 
 
-    my $btn   = $frame -> Button (-text   => 'get methods',
-                                  -command=> sub{$self->show_methods}
-                              )->pack;
-    my $text  = $self -> Scrolled('ROText')->pack(-fill   => 'both',
-						  -expand => 1
-						  );
+    my $btn   = $fr_right -> Button (-text   => 'show methods',
+                                     -command=> sub{$self->show_methods}
+                                 )->pack;
+    my $text  = $self -> Scrolled('ROText',
+                                  -wrap         => 'none',
+                                  -insertontime => 0,
+                              )->pack(-fill   => 'both',
+                                      -expand => 1,
+                                  );
     my $font  = $self -> fontCreate(-family => 'Courier',
                                     -size   => 10,
                                 );
     $text->configure(-font=>$font);
+    $text->tagConfigure('overridden',-background => 'orange');
+    $text->tagConfigure('source_ok' ,-background => 'green');
+    $text->tagConfigure('white'     ,-background => 'white');
+
     $text->menu(undef);         #disable
 
     $self -> Label(-textvariable=>\$self->{status})->pack;
@@ -134,15 +167,16 @@ sub Populate{
     }
     $text->focus;
 
-    @$self{qw/text font list indexmap/}= ($text,$font,[],[]);
+    @$self{qw/text font list/}= ($text,$font,[]);
 
-    $self->ConfigSpecs(-background  =>[$text,'','','white'],
+    $self->ConfigSpecs(-background  => [$text,'','','white'],
                        -classname   => ['METHOD'],
                        -filter      => ['METHOD'],
                        DEFAULT      => ['SELF'],
                    );
     return $self;
 }
+
 sub _adjust_selection{
     my $self = shift;
     my $w = $self->{text};
@@ -165,7 +199,7 @@ sub _change_fontsize{
 
 sub _text_click{
     my $self = shift;
-    my $w = $self->{text};
+    my $w    = $self->{text};
     my $position = $w->index('current');
     my $line;
     if ($position =~ m/^(\d+)\./) {
@@ -173,25 +207,33 @@ sub _text_click{
     } else {
         return
     }
-    my $idx = ${$self->{indexmap}}[$line - 1]; #line range starts at 1
-    my $file = convert_classname($self->{list}[$idx][2]);
-    my $methodname = $self->{list}[$idx][0];
+    my $idx  = $line - 1; #line range starts at 1
+    my $file = '';
+    for (qw/sourcepackage package/){
+        $file = _convert_classname($self->{list}[$idx]{$_});
+        last if $file;
+    }
+    my $methodname = $self->{list}[$idx]{sourcesymbol};
     my $re = qq/sub\\s+$methodname(\\W.*)?\$/;
     $self->_start_code_view($file,$re);
 }
 
-sub get_methods{
+sub _get_methods{
     my $self = shift;
     my ($class_name) = @_;
+    my $filter = $self->{filter};
+    my $regex = qr/$filter/i ;
     #  print "g_m called for $class_name\n";
     my @function_list;
     my @classes=Class::ISA::self_and_super_path($class_name);
+    my %overridden;
     foreach my $class (@classes) {
         no strict 'refs';
         my @list;
         my $s_t_r = \%{$class."::"};
         use strict ;
         foreach my $key ( keys %$s_t_r) {
+            next unless ($key =~ $regex);
             my $var =  \ ( $s_t_r->{$key} );
             my $state;
             ref $var eq 'GLOB' && *{$var}{CODE}
@@ -199,85 +241,129 @@ sub get_methods{
                 && defined &{*{$var}{CODE}} && ($state = 'defined');
             ref $var eq 'SCALAR' && $$var == -1 && ($state = 'declared');
             if ($state) {
-                push @list , [$key,$state,$class];
+                my $overridden = $overridden{$key} || 0;
+                my $definition = '';
+                $definition .= CvGV(*{$var}{CODE}).'' if $state eq 'defined';
+                $overridden{$key} = 1;
+                push @list , {symbol       => $key,
+                              state        => $state,
+                              package      => $class,
+                              overridden   => $overridden,
+                              defined_as   => $definition,
+                          };
             }
         }
-        @list = sort {lc $a->[0]cmp lc $b->[0]} @list;
+        @list = sort {lc $a->{symbol}cmp lc $b->{symbol}} @list;
         push @function_list,@list;
     }
-    return \@function_list;
+    $self->{list} = \@function_list;
+    return $self;
 }
+
+sub _grep_sources{
+    my $self = shift;
+    my $list = $self->{list};
+    $self->_set_source_fields;
+    my $last_filename = '';
+    my $filename      = '';
+    my $module_source = '';
+    for my $element (@$list) {
+        for (qw/sourcepackage package/){
+            $filename = _convert_classname($element->{$_});
+            last if $filename;
+        }
+        if ($filename && !($filename eq $last_filename)){
+            $module_source = read_file($filename);
+            $last_filename = $filename;
+        }
+        my $symbol = $element->{sourcesymbol};
+        $element->{source_avail} =
+            ($module_source =~/sub\s+$symbol(\W.*)?$/m)?
+                1 : 0;
+    }
+    return $self;
+}
+
+sub _set_source_fields{
+    my $self = shift;
+    my $list = $self->{list};
+    for my $element (@$list) {
+        if ($element->{defined_as} =~ /\*(.*)::(.*)$/){
+            $element->{sourcepackage} = $1;
+            $element->{sourcesymbol}  = $2;
+            $element->{defined_as} =~ s/^\*/alias to:  /;
+        }
+        my $defined_as = '';
+        for (qw/package symbol/){
+            $element->{"source$_"}||= $element->{$_};
+            unless($element->{$_} eq $element->{"source$_"}){
+                $defined_as = $element->{defined_as};
+            }
+        }
+        $element->{defined_as} = $defined_as;
+    }
+}
+
 
 sub show_methods{
     my $self = shift;
-    my ($filter,$text,$classname) = @$self{qw/filter text classname/};
-    my $regex = qr/$filter/i ;
+    my ($text,$classname) = @$self{qw/text classname/};
     $text->delete('1.0','end');
     $self->{indexmap} = [];
     if (! eval "require $classname") {
         $self->{list}= [];
         $self->{status}="Error: package '$classname' not found!";
-        # return;
+        return;
     }
     $self->{status}="Showing methods for '$classname'";
-
-    my $list = $self->{list} = $self->get_methods($classname);
-    $self ->_grep_sources;
-    my @max_length=(0,0,0);
-    for my $element (@$list) {
-        map {
-            my $length = length($element->[$_]);
-            $max_length[$_] =  $length if $length > $max_length[$_];
-        } (0,2);
-    }
-    $_+=2 for (@max_length);
-    my $i=0;
-    for my $element (@$list) {
-        if ($element->[0] =~ $regex) {
-            my $line = sprintf("%-$max_length[2]s%-$max_length[0]s%-10s%-10s",
-                               $element->[2], $element->[0] , 
-                               $element->[1], $element->[3])."\n";
-            $text->insert('end',$line);
-            push @{$self->{indexmap}}, $i;
-        }
-        $i++;
-    }
-}
-sub _grep_sources{
-    my $self = shift;
+    $self->_get_methods($classname)
+         ->_grep_sources;
     my $list = $self->{list};
-    my $module_name = '';
-    my $module_source= '';
+    my %max_width = ( symbol  => 0,
+                       package => 0,
+                  );
     for my $element (@$list) {
-        if ($element->[2] ne $module_name) {
-            $module_name = $element->[2];
-            my $filename = convert_classname($module_name);
-            $module_source = read_file($filename);
-        }
-        $element->[3] = ($module_source  =~ /sub\s+$element->[0](\W.*)?$/m)?
-            'source_found':'';
+        map {my $length = length($element->{$_})+2;
+             $max_width{$_} =  $length if $length > $max_width{$_};
+         } qw/symbol package/;
     }
+    for my $element (@$list) {
+            my $line = sprintf('%-'.$max_width{package}.'s'
+                               .'%-'.$max_width{symbol}.'s%-12s%-30s',
+                               $element->{package},
+                               $element->{symbol} ,
+                               $element->{state},
+                               $element->{defined_as})."\n";
+            $text->insert('end', '  ',
+                          $element->{overridden} ? 'overridden': 'white',# tag
+                           '  ',
+                          $element->{source_avail}? 'source_ok': 'white',# tag
+                          $line, '');
+    }
+    return $self;
 }
-sub convert_classname{
+
+sub _convert_classname{
     my $filename = $_[0];
     $filename =~  s#::#/#g;
     $filename.='.pm';
-    return $INC{$filename}||'file not known';
+    return $INC{$filename}||'';
 }
 sub classname{
     my ($self,$classname) = @_;
-    $self->{classname} = $classname;
-    $self;
+    $self->{classname} = $classname if $classname;
+    $self->{classname};
 }
 sub filter{
     my ($self,$filter) = @_;
     $self->{filter} = $filter;
-    $self;
+    $filter;
 }
 
 sub _start_code_view{
     my $self = shift;
     my ($filename,$regex)=@_;
+    return unless $filename;
     my $c_v = $self->{c_v};
     $self->{c_v_entry_filter}= $regex;
     unless ($c_v && $c_v->Exists){
@@ -288,11 +374,11 @@ sub _start_code_view{
         $c_v->raise;
     }
     my $text = $self->{c_v_text};
-    $c_v->configure(-title=>$filename);
     my $fh;
     open $fh,'<',$filename or die  "could not open '$filename'  $!";
     my @lines = <$fh>;
     close $fh or die "could not close '$filename' $!";
+    $c_v->configure(-title=>$filename);
     $text->delete('0.0','end');
     $text->insert('end',$_) for @lines;
     $c_v->focus();
@@ -303,26 +389,26 @@ sub _code_view_init_top{
     my $c_v = $self->Toplevel();
     my $frame = $c_v->Frame()->pack;
     my $text     = $c_v->Scrolled('ROText',
-                                  -bg=>'white')->pack(-fill   => 'both',
-						      -expand => 1,
-						  );
+                                  -wrap => 'none',
+                                  -bg   => 'white',
+                              )->pack(-fill   => 'both',
+                                      -expand => 1,
+				  );
     my $entry = $frame ->LabEntry(-label       => 'Filter',
-                                  -labelPack   =>[-side=>'left'],
+                                  -labelPack   => [-side=>'left'],
                                   -textvariable=>\($self->{c_v_entry_filter}||=''),
                                   -bg          =>'white'
-                              )->pack(-anchor=>'e');
+                              )->pack(-anchor => 'e');
     my $font  = $self -> fontCreate(-family => 'Courier',
                                     -size   => 10,
                                 );
-    $text->configure(-font=>$font);
-    $text->bind('<Control-plus>',sub{$self->_c_v_change_fontsize(2)}
-            );
-    $text->bind('<Control-minus>',sub{$self->_c_v_change_fontsize(-2)}
-            );
+    $text->configure(-font => $font);
+    $text->bind('<Control-plus>' ,sub{$self->_c_v_change_fontsize( 2)});
+    $text->bind('<Control-minus>',sub{$self->_c_v_change_fontsize(-2)});
     $entry->bind('<Return>',sub {$self->_c_v_filter_changed});
 
-    $frame->Button(-text   =>'Find Next',
-                   -command=>sub{$self->_c_v_filter_changed})->pack;
+    $frame->Button(-text    =>'Find Next',
+                   -command => sub{$self->_c_v_filter_changed})->pack;
     @$self{qw/c_v c_v_text c_v_font/} = ($c_v,$text,$font);
     #allow one code_view window only:
     $c_v->protocol("WM_DELETE_WINDOW",sub{$c_v->withdraw});
@@ -352,6 +438,3 @@ sub _test_{
     Tk::MainLoop();
 }
 1;
-
-
-

@@ -1,14 +1,16 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Tk-PerlMethodList
-version:      0.03
+version:      0.04
 version_from: lib/Tk/PerlMethodList.pm
 installdirs:  site
 requires:
     Class::ISA:                    0.33
+    Devel::Peek:                   0.96
     File::Slurp:                   9999.08
     Tk:                            8.4
     Tk::LabEntry:                  4.006
+    Tk::ROText:                    4.010
 
 distribution_type: module
 generated_by: ExtUtils::MakeMaker version 6.17

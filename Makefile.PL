@@ -7,8 +7,10 @@ WriteMakefile(
     VERSION_FROM      => 'lib/Tk/PerlMethodList.pm',
     PREREQ_PM         => {Tk          =>'8.4',
 			  Tk::LabEntry=>'4.006',
+			  Tk::ROText  =>'4.010',
 			  Class::ISA  =>'0.33',
-			  File::Slurp =>'9999.08'
+			  File::Slurp =>'9999.08',
+			  Devel::Peek =>'0.96',
 			  } ,
       ABSTRACT_FROM  => 'lib/Tk/PerlMethodList.pm', 
        AUTHOR         => 'Christoph Lamprecht <lamprecht@cpan.org>') ;
