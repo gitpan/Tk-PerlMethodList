@@ -1,16 +1,17 @@
 #! /usr/bin/perl
 
 package Tk::PerlMethodList;
-our $VERSION = 0.04;
+our $VERSION = 0.05;
 
 use warnings;
 use strict;
 use Class::ISA;
-#use Data::Dumper;
 use File::Slurp qw /read_file/;
 require Tk;
 require Tk::LabEntry;
 require Tk::ROText;
+require B::Stash;
+require B ;
 use Devel::Peek qw(CvGV);
 our @ISA    = ('Tk::Toplevel');
 
@@ -27,14 +28,16 @@ my $instance = $main_window->PerlMethodList();
 
 =head1 DESCRIPTION
 
-The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. The list will contain the sub-names present in the the symbol-table. It will therefore display imported subs as well. For the same reason it will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. In case of imported subs, the last field of the row contains the aliased sub as reported by DevelPeek::CvGV. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
+Tk::PerlMethodList is a Tk::Toplevel-derived widget.
+
+The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. In case of imported subs, the last field of a row contains the name of the aliased sub as reported by DevelPeek::CvGV. Tk::PerlMethodList will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
 
 If the file containing a subroutine definition can be found in %INC, a green mark will be displayed at the beginning of the line. The sourcecode will be displayed by clicking on the subs list-entry.
 
 
 Method list and source window have Control-plus and Control-minus bindings to change fontsize.
 
-Tk::PerlMethodList is a Tk::Toplevel-derived widget.
+
 
 =head1 METHODS
 
@@ -208,11 +211,8 @@ sub _text_click{
         return
     }
     my $idx  = $line - 1; #line range starts at 1
-    my $file = '';
-    for (qw/sourcepackage package/){
-        $file = _convert_classname($self->{list}[$idx]{$_});
-        last if $file;
-    }
+
+    my $file = $self->{list}[$idx]{file};
     my $methodname = $self->{list}[$idx]{sourcesymbol};
     my $re = qq/sub\\s+$methodname(\\W.*)?\$/;
     $self->_start_code_view($file,$re);
@@ -220,10 +220,10 @@ sub _text_click{
 
 sub _get_methods{
     my $self = shift;
-    my ($class_name) = @_;
+    my $class_name = $self->{classname};
     my $filter = $self->{filter};
     my $regex = qr/$filter/i ;
-    #  print "g_m called for $class_name\n";
+
     my @function_list;
     my @classes=Class::ISA::self_and_super_path($class_name);
     my %overridden;
@@ -239,17 +239,25 @@ sub _get_methods{
             ref $var eq 'GLOB' && *{$var}{CODE}
                 && ($state = 'declared')
                 && defined &{*{$var}{CODE}} && ($state = 'defined');
+
             ref $var eq 'SCALAR' && $$var == -1 && ($state = 'declared');
+            
             if ($state) {
                 my $overridden = $overridden{$key} || 0;
                 my $definition = '';
-                $definition .= CvGV(*{$var}{CODE}).'' if $state eq 'defined';
+                my $file = '';
+                if ($state eq 'defined'){
+                    $definition .= CvGV(*{$var}{CODE});
+                    my $o = B::svref_2object(*{$var}{CODE});
+                    $file = $o->FILE;# to do: fix .al
+                }
                 $overridden{$key} = 1;
                 push @list , {symbol       => $key,
                               state        => $state,
                               package      => $class,
                               overridden   => $overridden,
                               defined_as   => $definition,
+                              file         => $file,
                           };
             }
         }
@@ -265,21 +273,27 @@ sub _grep_sources{
     my $list = $self->{list};
     $self->_set_source_fields;
     my $last_filename = '';
-    my $filename      = '';
     my $module_source = '';
     for my $element (@$list) {
-        for (qw/sourcepackage package/){
-            $filename = _convert_classname($element->{$_});
-            last if $filename;
+
+        my $converted    = $self-> _convert_filename($element->{file});
+        $element->{file} = $converted if  $converted; 
+        unless ($element->{file}){
+            # fallback: check package file for autosplit defs
+            $element->{file}
+                = $self-> _convert_packagename($element->{package});
         }
-        if ($filename && !($filename eq $last_filename)){
-            $module_source = read_file($filename);
+        my $filename = $element->{file};
+        next unless $filename;
+        if ($filename && ($filename ne $last_filename)){
+            $module_source = read_file($filename, err_mode=>'quiet') || '';
             $last_filename = $filename;
         }
         my $symbol = $element->{sourcesymbol};
-        $element->{source_avail} =
-            ($module_source =~/sub\s+$symbol(\W.*)?$/m)?
+        $element->{source_avail} 
+            = ($module_source =~/sub\s+$symbol(\W.*)?$/m)?
                 1 : 0;
+        
     }
     return $self;
 }
@@ -293,14 +307,16 @@ sub _set_source_fields{
             $element->{sourcesymbol}  = $2;
             $element->{defined_as} =~ s/^\*/alias to:  /;
         }
-        my $defined_as = '';
-        for (qw/package symbol/){
+        my $is_alias = 0;
+        for (qw/symbol package/){
             $element->{"source$_"}||= $element->{$_};
             unless($element->{$_} eq $element->{"source$_"}){
-                $defined_as = $element->{defined_as};
+               # $defined_as = $element->{defined_as};
+                $is_alias = 1;
+                last;
             }
         }
-        $element->{defined_as} = $defined_as;
+        $element->{defined_as} = '' unless $is_alias;
     }
 }
 
@@ -310,31 +326,58 @@ sub show_methods{
     my ($text,$classname) = @$self{qw/text classname/};
     $text->delete('1.0','end');
     $self->{indexmap} = [];
-    if (! eval "require $classname") {
+
+    eval "require $classname";
+    # now check if package $classname is loaded -
+    # package $classname needn't be defined in the required file...
+    
+    my %is_loaded_package
+        = map {s/::$//;$_ => 1} B::Stash::scan($main::{'main::'});
+
+    unless ($is_loaded_package{$classname}) {
         $self->{list}= [];
         $self->{status}="Error: package '$classname' not found!";
         return;
     }
+    # there are dummy classes like Tk::Ev ... Try to sort these out:
+    no strict ('refs');
+    unless (scalar (%{*{$classname.'::'}{HASH}})){
+        $self->{status} = "Error: Package '$classname' has no symbols!";
+        return;
+    }
+
     $self->{status}="Showing methods for '$classname'";
-    $self->_get_methods($classname)
+    
+    $self->{inc_files} = {map {$INC{$_}, 1} keys(%INC)};
+
+    $self->_get_methods
          ->_grep_sources;
     my $list = $self->{list};
-    my %max_width = ( symbol  => 0,
-                       package => 0,
+    my %max_width = ( symbol     => 0,
+                      package    => 0,
+                      defined_as => 0,
+                      file       => 0,
                   );
     for my $element (@$list) {
         map {my $length = length($element->{$_})+2;
              $max_width{$_} =  $length if $length > $max_width{$_};
-         } qw/symbol package/;
+         } qw/symbol package defined_as file/;
     }
     for my $element (@$list) {
-            my $line = sprintf('%-'.$max_width{package}.'s'
-                               .'%-'.$max_width{symbol}.'s%-12s%-30s',
+            my $line = sprintf( '%-'.$max_width{package}.'s'
+                               .'%-'.$max_width{symbol}.'s'
+                               .'%-'.$max_width{file}.'s'
+                               .'%-12s'
+                               .'%-'.$max_width{defined_as}.'s',
+
                                $element->{package},
                                $element->{symbol} ,
+                               $element->{file},
                                $element->{state},
-                               $element->{defined_as})."\n";
-            $text->insert('end', '  ',
+                               $element->{defined_as},
+                           )."\n";
+            $text->insert('end',# provide pairs of content, tag:
+                          '  ',
                           $element->{overridden} ? 'overridden': 'white',# tag
                            '  ',
                           $element->{source_avail}? 'source_ok': 'white',# tag
@@ -343,11 +386,31 @@ sub show_methods{
     return $self;
 }
 
-sub _convert_classname{
-    my $filename = $_[0];
-    $filename =~  s#::#/#g;
-    $filename.='.pm';
-    return $INC{$filename}||'';
+sub _convert_filename{
+    my ($self,$filename) = @_;
+    my $inc_files = $self->{inc_files};
+
+    my $path_name =  exists ($inc_files->{$filename})? $filename : '';
+    # If $filename is not in $inc_files, it might be a .al file:
+    unless ($path_name){
+        if ($filename =~ m|autosplit into .*lib.auto.(.*\.al)|){
+            my $seg = $1;
+            $seg =~ y|\\|/|;
+            for (keys %$inc_files){
+                if ($_ =~ /$seg/){
+                    $path_name = $_;
+                    last;
+                }
+            }
+        }
+    }
+    return $path_name;
+}
+sub _convert_packagename{
+    my ($self,$package) = @_;
+    $package =~  s#::#/#g;
+    $package.='.pm';
+    return $INC{$package}||'';
 }
 sub classname{
     my ($self,$classname) = @_;
@@ -374,13 +437,22 @@ sub _start_code_view{
         $c_v->raise;
     }
     my $text = $self->{c_v_text};
-    my $fh;
-    open $fh,'<',$filename or die  "could not open '$filename'  $!";
-    my @lines = <$fh>;
-    close $fh or die "could not close '$filename' $!";
-    $c_v->configure(-title=>$filename);
     $text->delete('0.0','end');
-    $text->insert('end',$_) for @lines;
+
+    my $content = read_file($filename,
+                          err_mode=> 'quiet',
+                      );
+    unless ($content){
+        $self->messageBox(-message => "No file '$filename' found",
+                         # -font    => 'Helvetica 14', # broken w. 8.027
+                          -title   => 'Error',
+
+                      );
+        $c_v->withdraw;
+        return;
+    }
+    $c_v->configure(-title=>$filename);
+    $text->insert('end',$content);
     $c_v->focus();
     $self->_c_v_filter_changed() if $regex;
 }

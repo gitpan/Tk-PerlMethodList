@@ -10,3 +10,5 @@ Revision history for Perl extension Tk::PerlMethodList.
 0.04  Use colored marks to indicate overridden methods and functions
       for which sourcecode can be displayed.
       Displays source packages for imported subs.
+
+0.05  Use B module to get more filenames. 

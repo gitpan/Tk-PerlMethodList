@@ -1,16 +1,15 @@
-Tk-PerlMethodList version 0.01
+Tk-PerlMethodList version 0.05
 ==========================
+
 
 Tk::PerlMethodList is a Tk::Toplevel-derived widget.
 
-
-The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. The list will contain the sub-names present in the the symbol-table. It will therefore display imported subs as well. For the same reason it will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. In case of imported subs, the last field of the row contains the aliased sub as reported by DevelPeek::CvGV. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
+The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. In case of imported subs, the last field of a row contains the name of the aliased sub as reported by DevelPeek::CvGV. Tk::PerlMethodList will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
 
 If the file containing a subroutine definition can be found in %INC, a green mark will be displayed at the beginning of the line. The sourcecode will be displayed by clicking on the subs list-entry.
 
 
-Method list and source window have Control-plus and Control-minus bindings to
-change fontsize.
+Method list and source window have Control-plus and Control-minus bindings to change fontsize.
 
 
 INSTALLATION
@@ -31,11 +30,13 @@ File::Slurp
 Tk
 Tk::LabEntry
 Tk::ROText
-Devel::Peek;
+Devel::Peek
+B
+B::Stash
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2006 by Christoph Lamprecht
+Copyright (C) 2006-2007 by Christoph Lamprecht
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.7 or,
