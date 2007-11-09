@@ -1,7 +1,7 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Tk-PerlMethodList
-version:      0.05
+version:      0.06
 version_from: lib/Tk/PerlMethodList.pm
 installdirs:  site
 requires:
@@ -12,6 +12,7 @@ requires:
     File::Slurp:                   9999.08
     Tk:                            8.4
     Tk::LabEntry:                  4.006
+    Tk::NumEntry:                  2.06
     Tk::ROText:                    4.010
 
 distribution_type: module

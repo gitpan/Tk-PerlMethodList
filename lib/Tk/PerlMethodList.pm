@@ -1,14 +1,16 @@
 #! /usr/bin/perl
 
 package Tk::PerlMethodList;
-our $VERSION = 0.05;
+our $VERSION = 0.06;
 
 use warnings;
 use strict;
 use Class::ISA;
+#use Data::Dumper;
 use File::Slurp qw /read_file/;
 require Tk;
 require Tk::LabEntry;
+require Tk::NumEntry;
 require Tk::ROText;
 require B::Stash;
 require B ;
@@ -30,7 +32,7 @@ my $instance = $main_window->PerlMethodList();
 
 Tk::PerlMethodList is a Tk::Toplevel-derived widget.
 
-The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. In case of imported subs, the last field of a row contains the name of the aliased sub as reported by DevelPeek::CvGV. Tk::PerlMethodList will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
+The window contains entry fields for a classname and a regex. The list below displays the subroutine-names in the package(s) of the given classname and its parent classes. The list displays the sub-names present in the the symbol-table. In case of imported subs, the last field of a row contains the name of the aliased sub as reported by DevelPeek::CvGV. Tk::PerlMethodList will not show subs which can be - but have not yet been autoloaded. It will show declared subs though. The 'Filter' entry takes a regex to filter the returned List of sub/methodnames.
 
 If the file containing a subroutine definition can be found in %INC, a green mark will be displayed at the beginning of the line. The sourcecode will be displayed by clicking on the subs list-entry.
 
@@ -108,10 +110,13 @@ sub Populate{
                                       );
     my $fr_left  = $frame-> Frame()->pack(-side => 'left',
                                           -fill => 'y');
-    my $fr_right = $frame-> Frame(-relief      => 'sunken',
+    my $fr_mid = $frame-> Frame(-relief      => 'sunken',
                                   -borderwidth => 2,
                               )->pack(-side => 'left',
                                       -padx => 10);
+    my $fr_right  = $frame-> Frame()->pack(-side => 'left',
+                                           -fill => 'y',
+                                           -padx => 20);
 
     my $fr_overr = $fr_left->Frame()->pack(-anchor => 'nw',
                                            -pady   => 1
@@ -131,7 +136,7 @@ sub Populate{
                     ['Filter'   ,\($self->{filter}||='')]);
 
     @$self{qw/entry_cl entry_f/}= 
-        map {my $e = $fr_right -> LabEntry(-label       => $_->[0],
+        map {my $e = $fr_mid -> LabEntry(-label       => $_->[0],
 					   -textvariable=> $_->[1],
 					   -labelPack   => [-side=>'left'],
 				       )->pack(-anchor => 'e');
@@ -140,7 +145,7 @@ sub Populate{
          } @btn_data;
 
 
-    my $btn   = $fr_right -> Button (-text   => 'show methods',
+    my $btn   = $fr_mid -> Button (-text   => 'show methods',
                                      -command=> sub{$self->show_methods}
                                  )->pack;
     my $text  = $self -> Scrolled('ROText',
@@ -150,7 +155,7 @@ sub Populate{
                                       -expand => 1,
                                   );
     my $font  = $self -> fontCreate(-family => 'Courier',
-                                    -size   => 10,
+                                    -size   => 12,
                                 );
     $text->configure(-font=>$font);
     $text->tagConfigure('overridden',-background => 'orange');
@@ -161,8 +166,23 @@ sub Populate{
 
     $self -> Label(-textvariable=>\$self->{status})->pack;
 
-    $text->bind('<Control-plus>',sub{$self->_change_fontsize(2)});
-    $text->bind('<Control-minus>',sub{$self->_change_fontsize(-2)});
+    $fr_right->Label(-text => 'Fontsize:',
+                 )->pack(-side => 'left',
+                         -padx => 10,
+                         );
+    my $ne;
+    $ne  = $fr_right->NumEntry(-minvalue => 8,
+                               -maxvalue => 16,
+                               -value    => 12,
+                               -width    => 3,
+                               -readonly => 1,
+                               -browsecmd=> sub{
+                                   $self->_change_fontsize($ne->cget('-value'))
+                               },
+                           )->pack(-side => 'left');
+    
+    $text->bind('<Control-plus>',sub{$ne->incdec(1)});
+    $text->bind('<Control-minus>',sub{$ne->incdec(-1)});
     $text->bind('<1>',sub{$self->_text_click});
     $text->bind('<Motion>',sub {$self->_adjust_selection});
     for my $w (@$self{qw/entry_cl entry_f/}) {
@@ -190,12 +210,8 @@ sub _adjust_selection{
 
 sub _change_fontsize{
     my $self = shift;
-    my $delta = $_[0];
+    my $size = $_[0];
     my ($text,$font) = @$self{qw/text font/};
-    my $size = $text->fontConfigure($font,'-size');
-    $size += $delta;
-    $size = ($size < 8) ? 8  : $size;
-    $size = ($size > 14)? 14 : $size;
     $text->fontConfigure($font,'-size',$size);
 }
 
@@ -444,9 +460,8 @@ sub _start_code_view{
                       );
     unless ($content){
         $self->messageBox(-message => "No file '$filename' found",
-                         # -font    => 'Helvetica 14', # broken w. 8.027
+                         # -font    => 'Helvetica 14',
                           -title   => 'Error',
-
                       );
         $c_v->withdraw;
         return;
@@ -459,7 +474,8 @@ sub _start_code_view{
 sub _code_view_init_top{
     my $self = shift;
     my $c_v = $self->Toplevel();
-    my $frame = $c_v->Frame()->pack;
+    my $top_fr = $c_v->Frame()->pack;
+    my $frame = $top_fr->Frame()->pack;
     my $text     = $c_v->Scrolled('ROText',
                                   -wrap => 'none',
                                   -bg   => 'white',
@@ -470,17 +486,37 @@ sub _code_view_init_top{
                                   -labelPack   => [-side=>'left'],
                                   -textvariable=>\($self->{c_v_entry_filter}||=''),
                                   -bg          =>'white'
-                              )->pack(-anchor => 'e');
+                              )->pack(-side => 'left',
+                                      );
     my $font  = $self -> fontCreate(-family => 'Courier',
-                                    -size   => 10,
+                                    -size   => 12,
                                 );
+    
     $text->configure(-font => $font);
-    $text->bind('<Control-plus>' ,sub{$self->_c_v_change_fontsize( 2)});
-    $text->bind('<Control-minus>',sub{$self->_c_v_change_fontsize(-2)});
+
     $entry->bind('<Return>',sub {$self->_c_v_filter_changed});
 
     $frame->Button(-text    =>'Find Next',
-                   -command => sub{$self->_c_v_filter_changed})->pack;
+                   -command => sub{$self->_c_v_filter_changed},
+               )->pack(-side => 'left',
+                       -padx => 10);
+    $frame->Label(-text => 'Fontsize:')->pack(-side => 'left',
+                                             -padx => 10);
+    my $ne;
+    $ne  = $frame->NumEntry(-minvalue => 8,
+                            -maxvalue => 16,
+                            -value    => 12,
+                            -width    => 3,
+                            -readonly => 1,
+                            -browsecmd=> sub{
+                                   $self->_c_v_change_fontsize(
+                                            $ne->cget('-value'))
+                               },
+                        )->pack(-side => 'left');
+    
+    $text->bind('<Control-plus>',sub{$ne->incdec(1)});
+    $text->bind('<Control-minus>',sub{$ne->incdec(-1)});
+
     @$self{qw/c_v c_v_text c_v_font/} = ($c_v,$text,$font);
     #allow one code_view window only:
     $c_v->protocol("WM_DELETE_WINDOW",sub{$c_v->withdraw});
@@ -494,12 +530,8 @@ sub _c_v_filter_changed{
 
 sub _c_v_change_fontsize{
     my $self = shift;
-    my $delta = $_[0];
+    my $size = $_[0];
     my ($text,$font) = @$self{qw/c_v_text c_v_font/};
-    my $size = $text->fontConfigure($font,'-size');
-    $size += $delta;
-    $size = ($size < 8) ? 8  : $size;
-    $size = ($size > 12)? 12 : $size;
     $text->fontConfigure($font,'-size',$size);
 }
 

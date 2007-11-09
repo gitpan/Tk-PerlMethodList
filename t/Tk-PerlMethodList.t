@@ -21,7 +21,7 @@ my $text   =  $w->{text};
 my $font   =  $w->{font};
 
 my $size   = $text->fontConfigure($font,'-size');
-is($size, 10, 'fontsize');
+is($size, 12, 'fontsize');
 
 my $family = $text->fontConfigure($font,'-family');
 is($family, 'Courier', 'fontfamily'); 

@@ -1,4 +1,4 @@
-Tk-PerlMethodList version 0.05
+Tk-PerlMethodList version 0.06
 ==========================
 
 
@@ -29,6 +29,7 @@ Class::ISA
 File::Slurp
 Tk
 Tk::LabEntry
+Tk::NumEntry
 Tk::ROText
 Devel::Peek
 B

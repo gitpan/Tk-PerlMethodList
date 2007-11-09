@@ -12,3 +12,5 @@ Revision history for Perl extension Tk::PerlMethodList.
       Displays source packages for imported subs.
 
 0.05  Use B module to get more filenames. 
+
+0.06  Added NumEntry to control fontsize / increased fontsize range
