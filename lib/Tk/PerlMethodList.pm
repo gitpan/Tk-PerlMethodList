@@ -1,19 +1,19 @@
 #! /usr/bin/perl
 
 package Tk::PerlMethodList;
-our $VERSION = 0.06;
+our $VERSION = 0.07;
 
 use warnings;
 use strict;
-use Class::ISA;
 #use Data::Dumper;
 use File::Slurp qw /read_file/;
 require Tk;
 require Tk::LabEntry;
 require Tk::NumEntry;
 require Tk::ROText;
-require B::Stash;
+require Class::Inspector;
 require B ;
+use MRO::Compat;
 use Devel::Peek qw(CvGV);
 our @ISA    = ('Tk::Toplevel');
 
@@ -137,11 +137,11 @@ sub Populate{
 
     @$self{qw/entry_cl entry_f/}= 
         map {my $e = $fr_mid -> LabEntry(-label       => $_->[0],
-					   -textvariable=> $_->[1],
-					   -labelPack   => [-side=>'left'],
-				       )->pack(-anchor => 'e');
-	     $e->Subwidget('entry')->configure(-background => 'white');
-	     $e;
+                                         -textvariable=> $_->[1],
+                                         -labelPack   => [-side=>'left'],
+                                    ) ->pack(-anchor => 'e');
+             $e->Subwidget('entry')->configure(-background => 'white');
+             $e;
          } @btn_data;
 
 
@@ -241,9 +241,9 @@ sub _get_methods{
     my $regex = qr/$filter/i ;
 
     my @function_list;
-    my @classes=Class::ISA::self_and_super_path($class_name);
+    my $classes = mro::get_linear_isa($class_name);
     my %overridden;
-    foreach my $class (@classes) {
+    foreach my $class (@$classes) {
         no strict 'refs';
         my @list;
         my $s_t_r = \%{$class."::"};
@@ -346,24 +346,16 @@ sub show_methods{
     eval "require $classname";
     # now check if package $classname is loaded -
     # package $classname needn't be defined in the required file...
-    
-    my %is_loaded_package
-        = map {s/::$//;$_ => 1} B::Stash::scan($main::{'main::'});
 
-    unless ($is_loaded_package{$classname}) {
+
+    unless (Class::Inspector->loaded($classname)) {
         $self->{list}= [];
-        $self->{status}="Error: package '$classname' not found!";
-        return;
-    }
-    # there are dummy classes like Tk::Ev ... Try to sort these out:
-    no strict ('refs');
-    unless (scalar (%{*{$classname.'::'}{HASH}})){
-        $self->{status} = "Error: Package '$classname' has no symbols!";
+        $self->{status}="Error: package '$classname' not loaded!";
         return;
     }
 
     $self->{status}="Showing methods for '$classname'";
-    
+
     $self->{inc_files} = {map {$INC{$_}, 1} keys(%INC)};
 
     $self->_get_methods
@@ -481,7 +473,7 @@ sub _code_view_init_top{
                                   -bg   => 'white',
                               )->pack(-fill   => 'both',
                                       -expand => 1,
-				  );
+                                  );
     my $entry = $frame ->LabEntry(-label       => 'Filter',
                                   -labelPack   => [-side=>'left'],
                                   -textvariable=>\($self->{c_v_entry_filter}||=''),
@@ -491,7 +483,7 @@ sub _code_view_init_top{
     my $font  = $self -> fontCreate(-family => 'Courier',
                                     -size   => 12,
                                 );
-    
+
     $text->configure(-font => $font);
 
     $entry->bind('<Return>',sub {$self->_c_v_filter_changed});
@@ -513,7 +505,7 @@ sub _code_view_init_top{
                                             $ne->cget('-value'))
                                },
                         )->pack(-side => 'left');
-    
+
     $text->bind('<Control-plus>',sub{$ne->incdec(1)});
     $text->bind('<Control-minus>',sub{$ne->incdec(-1)});
 
